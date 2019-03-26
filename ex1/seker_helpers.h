@@ -15,9 +15,18 @@
 #define MAXIMUM_COURSE_NAME_LENGTH 100
 #define MAXIMUM_USERNAME_LENGTH 15
 #define MAXIMUM_NUMBER_OF_USERS 25
+#define DEFAULT_PORT 1337
 
 int receiveAll(int socketFd, char* buffer, int* length);
 
 int sendAll(int socketFd, char* buffer, int* length);
+
+int sendString(char* toSend, int socketFd);
+
+int sendInt(int toSend, int socketFd);
+
+int receiveString(char* buffer, int socketFd);
+
+int receivePositiveInt(int socketFd);
 
 #endif //PROJECT_SEKER_HELPERS_H
