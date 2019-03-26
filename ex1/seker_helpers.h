@@ -23,7 +23,7 @@ int sendAll(int socketFd, char* buffer, int* length);
 
 int sendString(int socketFd, char* toSend);
 
-int sendInt(int socketFd, int toSend);
+int sendPositiveInt(int socketFd, int toSend);
 
 int receiveString(int socketFd, char* buffer);
 

@@ -50,7 +50,7 @@ int sendAll(int socketFd, char* buffer, int* length) {
 	return sent < 0 ? ERROR : SUCCESS;
 }
 
-int sendInt(int socketFd, int toSend) {
+int sendPositiveInt(int socketFd, int toSend) {
 	uint32_t networkToSend = htonl(toSend);
 	char* byteToSend = (char*) &networkToSend;
 	int size = sizeof(networkToSend);
