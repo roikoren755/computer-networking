@@ -21,11 +21,11 @@ int receiveAll(int socketFd, char* buffer, int* length);
 
 int sendAll(int socketFd, char* buffer, int* length);
 
-int sendString(char* toSend, int socketFd);
+int sendString(int socketFd, char* toSend);
 
-int sendInt(int toSend, int socketFd);
+int sendInt(int socketFd, int toSend);
 
-int receiveString(char* buffer, int socketFd);
+int receiveString(int socketFd, char* buffer);
 
 int receivePositiveInt(int socketFd);
 

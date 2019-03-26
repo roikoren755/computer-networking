@@ -50,7 +50,7 @@ int sendAll(int socketFd, char* buffer, int* length) {
 	return sent < 0 ? ERROR : SUCCESS;
 }
 
-int sendInt(int toSend, int socketFd) {
+int sendInt(int socketFd, int toSend) {
 	uint32_t networkToSend = htonl(toSend);
 	char* byteToSend = (char*) &networkToSend;
 	int size = sizeof(networkToSend);
@@ -58,7 +58,7 @@ int sendInt(int toSend, int socketFd) {
 	return sendAll(socketFd, byteToSend, &size);
 }
 
-int sendString(char* toSend, int socketFd) {
+int sendString(int socketFd, char* toSend) {
 	int length = strlen(toSend);
 	if (sendInt(length, socketFd)) {
 		return ERROR;
@@ -67,7 +67,7 @@ int sendString(char* toSend, int socketFd) {
 	return sendAll(socketFd, toSend, &length);
 }
 
-int receiveString(char* buffer, int socketFd) {
+int receiveString(int socketFd, char* buffer) {
 	int stringLength = receivePositiveInt(socketFd);
 	if (stringLength < 0) {
 		return ERROR;
