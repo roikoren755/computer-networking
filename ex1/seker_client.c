@@ -22,13 +22,13 @@
 #define PARSING_ERROR -1
 #define USAGE_ERROR 1
 #define HOSTNAME_RESOLUTION_ERROR 2
-#define SOCKET_OPENING_ERROR 1
-#define SERVER_CONNECTING_ERROR 1
-#define INTERNAL_SERVER_ERROR 1
-#define TCP_RECEIVE_ERROR 1
-#define INPUT_ERROR 1
-#define TCP_SEND_ERROR 1
-#define USAGE_ERROR 1
+#define SOCKET_OPENING_ERROR 2
+#define SERVER_CONNECTING_ERROR 3
+#define INTERNAL_SERVER_ERROR 4
+#define TCP_RECEIVE_ERROR 5
+#define INPUT_ERROR 6
+#define TCP_SEND_ERROR 7
+#define HANDSHAKE_ERROR 8
 #define USAGE_ERROR 1
 #define USAGE_ERROR 1
 #define USAGE_ERROR 1
@@ -113,7 +113,11 @@ int findAndConnectToServer() {
 }
 
 int initialHandshake() {
-	int response;
+	int response = receivePositiveInt(socketFd);
+	if (response != SUCCESS) {
+		printf("ERROR: Could not initialize handshake!");
+		return HANDSHAKE_ERROR;
+	}
 	char username[MAXIMUM_USERNAME_LENGTH + 1];
 	char password[MAXIMUM_USERNAME_LENGTH + 1];
 
@@ -216,9 +220,9 @@ int main(int argc, char* argv[]) {
 		return error;
 	}
 
-	socketFd = findAndConnectToServer();
-	if (socketFd < 0) {
-		return -socketFd;
+	error = findAndConnectToServer();
+	if (error < 0) {
+		return -error;
 	}
 
 	error = initialHandshake();

@@ -4,9 +4,9 @@
 
 #include "seker_helpers.h"
 
+#include <sys/socket.h>
 #include <netdb.h>
 #include <string.h>
-#include <sys/socket.h>
 
 int receiveAll(int socketFd, char* buffer, int* length) {
 	int total = 0;
