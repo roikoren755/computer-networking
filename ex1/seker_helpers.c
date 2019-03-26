@@ -86,3 +86,7 @@ int receivePositiveInt(int socketFd) {
 
 	return ntohl(response);
 }
+
+void removeTrailingChar(char* string) {
+	string[strlen(string) - 1] = '\0';
+}

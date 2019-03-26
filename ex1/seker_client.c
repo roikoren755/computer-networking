@@ -2,7 +2,6 @@
 // Created by Roi Koren on 2019-03-24.
 //
 
-#include "seker_client.h"
 #include "seker_helpers.h"
 
 #include <sys/socket.h>
@@ -18,6 +17,7 @@
 #define get_rate "get_rate"
 #define quit "quit"
 #define DELIMITERS " \t"
+#define QUOTATION_MARK "\""
 #define QUIT 5
 #define PARSING_ERROR -1
 #define USAGE_ERROR 1
@@ -29,9 +29,6 @@
 #define INPUT_ERROR 6
 #define TCP_SEND_ERROR 7
 #define HANDSHAKE_ERROR 8
-#define USAGE_ERROR 1
-#define USAGE_ERROR 1
-#define USAGE_ERROR 1
 
 char hostname[MAXIMUM_RATING_TEXT_LENGTH + 1] = {0};
 char port[10] = {0};
@@ -39,11 +36,22 @@ char inputBuffer[MAXIMUM_RATING_TEXT_LENGTH + 101] = {0};
 char receiveBuffer[MAXIMUM_RATING_TEXT_LENGTH + 101] = {0};
 int socketFd;
 
-int closeSocket(int error) {
+/***
+ * Closes socketFd and returns exitCode
+ * @param exitCode - return value wanted
+ * @return exitCode
+ */
+int closeSocket(int exitCode) {
 	close(socketFd);
-	return error;
+	return exitCode;
 }
 
+/***
+ * Parses command to get an integer representation for ease of handling
+ * @param command - command to parse
+ * @return appropriate value if command name is valid
+ * 		   PARSING_ERROR otherwise
+ */
 int getCommandInt(char* command) {
 	char* firstArgument = strtok(command, DELIMITERS);
 	if (!strcmp(firstArgument, list_of_courses)) {
@@ -65,6 +73,13 @@ int getCommandInt(char* command) {
 	return PARSING_ERROR;
 }
 
+/***
+ * Verifies program arguments
+ * @param argc - number of arguments
+ * @param argv - array of arguments
+ * @return USAGE_ERROR if more than 2 arguments are passed to the program
+ * 		   SUCCESS otherwise
+ */
 int verifyArguments(int argc, char* argv[]) {
 	if (argc > 3) { // No more than 2 arguments
 		printf("USAGE: %s [hostname [port]]\n", argv[0]);
@@ -86,32 +101,42 @@ int verifyArguments(int argc, char* argv[]) {
 	return SUCCESS;
 }
 
+/***
+ * Finds server address info, opens a socket and connects to the server
+ * @return appropriate error code if error occurs
+ * 		   SUCCESS otherwise
+ */
 int findAndConnectToServer() {
 	struct addrinfo* result;
 	if (getaddrinfo(hostname, port, NULL, &result) < 0) {
 		perror("Could not resolve hostname '%s'!");
-		return -HOSTNAME_RESOLUTION_ERROR;
+		return HOSTNAME_RESOLUTION_ERROR;
 	}
 
 	if (result == NULL) {
 		printf("No results found for hostname %s and port %s!\n", hostname, port);
-		return -HOSTNAME_RESOLUTION_ERROR;
+		return HOSTNAME_RESOLUTION_ERROR;
 	}
 
 	socketFd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (socketFd < 0) {
 		perror("Could not open socket to server!");
-		return -SOCKET_OPENING_ERROR;
+		return SOCKET_OPENING_ERROR;
 	}
 
 	if (connect(socketFd, result->ai_addr, sizeof(struct sockaddr_in)) < 0) {
 		perror("Could not connect to server!");
-		return closeSocket(-SERVER_CONNECTING_ERROR);
+		return closeSocket(SERVER_CONNECTING_ERROR);
 	}
 
 	return SUCCESS;
 }
 
+/***
+ * Initializes connection to server, and attempts to log user in
+ * @return appropriate error code if an error occurs
+ * 		   SUCCESS otherwise
+ */
 int initialHandshake() {
 	int response = receivePositiveInt(socketFd);
 	if (response != SUCCESS) {
@@ -137,6 +162,9 @@ int initialHandshake() {
 			return INPUT_ERROR;
 		}
 
+		removeTrailingChar(username);
+		removeTrailingChar(password);
+
 		if (sendString(socketFd, username) || sendString(socketFd, password)) {
 			perror("Could not send message to server.");
 			return TCP_SEND_ERROR;
@@ -154,6 +182,11 @@ int initialHandshake() {
 	return SUCCESS;
 }
 
+/***
+ * Handles "list_of_courses" input from user
+ * @return appropriate error code if an error occurs
+ * 		   SUCCESS otherwise
+ */
 int handleListOfCourses() {
 	if (sendPositiveInt(socketFd, LIST_OF_COURSES)) {
 		perror("Could not send requestId to server");
@@ -186,7 +219,17 @@ int handleListOfCourses() {
 	return SUCCESS;
 }
 
+/***
+ * Handles "add_course" input from user
+ * @return appropriate error code if an error occurs
+ * 		   SUCCESS otherwise
+ */
 int handleAddCourse() {
+	if (sendPositiveInt(socketFd, ADD_COURSE)) {
+		perror("Could not send requestId to server");
+		return TCP_SEND_ERROR;
+	}
+
 	char* argument = strtok(inputBuffer, DELIMITERS);
 	argument = strtok(NULL, DELIMITERS);
 	int courseInt = atoi(argument);
@@ -202,7 +245,7 @@ int handleAddCourse() {
 	} else if (response == ERROR) {
 		printf("%d exists in the database!\n", courseInt);
 	} else {
-		argument = strtok(NULL, DELIMITERS);
+		argument = strtok(NULL, QUOTATION_MARK);
 		if (sendString(socketFd, argument)) {
 			perror("Could not send course name to server");
 			return TCP_SEND_ERROR;
@@ -214,24 +257,95 @@ int handleAddCourse() {
 	return SUCCESS;
 }
 
-int main(int argc, char* argv[]) {
-	int error = verifyArguments(argc, argv);
-	if (error) {
-		return error;
+/***
+ * Handles "rate_course" input from user
+ * @return appropriate error code if an error occurs
+ * 		   SUCCESS otherwise
+ */
+int handleRateCourse() {
+	if (sendPositiveInt(socketFd, RATE_COURSE)) {
+		perror("Could not send requestId to server");
+		return TCP_SEND_ERROR;
 	}
 
-	error = findAndConnectToServer();
-	if (error < 0) {
-		return -error;
+	char* argument = strtok(inputBuffer, DELIMITERS);
+	argument = strtok(NULL, DELIMITERS);
+	int courseInt = atoi(argument);
+	if (sendPositiveInt(socketFd, courseInt)) {
+		perror("Could not send course number to server");
+		return TCP_SEND_ERROR;
 	}
 
-	error = initialHandshake();
-	if (error) {
-		return closeSocket(error);
+	argument = strtok(NULL, DELIMITERS);
+	int grade = atoi(argument);
+	if (sendPositiveInt(socketFd, grade)) {
+		perror("Could not send rating value to server");
+		return TCP_SEND_ERROR;
 	}
 
+	argument = strtok(NULL, QUOTATION_MARK);
+	if (sendString(socketFd, argument)) {
+		perror("Could not send rating text to server");
+		return TCP_SEND_ERROR;
+	}
 
+	printf("%d added successfully.\n", courseInt);
+
+	return SUCCESS;
+}
+
+/***
+ * Handles "get_rate" input from user
+ * @return appropriate error code if an error occurs
+ * 		   SUCCESS otherwise
+ */
+int handleGetRate() {
+	if (sendPositiveInt(socketFd, GET_RATE)) {
+		perror("Could not send requestId to server");
+		return TCP_SEND_ERROR;
+	}
+
+	int numberOfRatings = receivePositiveInt(socketFd);
+	if (numberOfRatings < 0) {
+		perror("Could not receive number of ratings from server");
+		return TCP_RECEIVE_ERROR;
+	}
+
+	int courseNumber;
+	char user[MAXIMUM_USERNAME_LENGTH + 1] = {0};
+	for (int i = 0; i < numberOfRatings; i++) {
+		memset(user, 0, MAXIMUM_USERNAME_LENGTH);
+		if (receiveString(socketFd, user)) {
+			perror("Could not receive user from server");
+			return TCP_RECEIVE_ERROR;
+		}
+
+		courseNumber = receivePositiveInt(socketFd);
+		if (courseNumber < 0) {
+			perror("Could not receive course number from server");
+			return TCP_RECEIVE_ERROR;
+		}
+
+		memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
+		if (receiveString(socketFd, receiveBuffer)) {
+			perror("Could not receive course details from server");
+			return TCP_RECEIVE_ERROR;
+		}
+
+		printf("%s:\t%d\t%s\n", user, courseNumber, receiveBuffer);
+	}
+
+	return SUCCESS;
+}
+
+/***
+ * Handles input from user in a loop, until he enters "quit"
+ * @return appropriate error code if an error occurs
+ * 		   SUCCESS otherwise
+ */
+int handleUserCommands() {
 	int quitEntered = 0;
+	int error;
 	while (!quitEntered) {
 		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
 		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
@@ -249,6 +363,18 @@ int main(int argc, char* argv[]) {
 					return closeSocket(error);
 				}
 				break;
+			case RATE_COURSE:
+				error = handleRateCourse();
+				if (error) {
+					return closeSocket(error);
+				}
+				break;
+			case GET_RATE:
+				error = handleGetRate();
+				if (error) {
+					return closeSocket(error);
+				}
+				break;
 			case QUIT:
 				quitEntered = 1;
 				break;
@@ -259,4 +385,23 @@ int main(int argc, char* argv[]) {
 	}
 
 	return closeSocket(SUCCESS);
+}
+
+int main(int argc, char* argv[]) {
+	int error = verifyArguments(argc, argv);
+	if (error) {
+		return error;
+	}
+
+	error = findAndConnectToServer();
+	if (error) {
+		return error;
+	}
+
+	error = initialHandshake();
+	if (error) {
+		return closeSocket(error);
+	}
+
+	return handleUserCommands();
 }
