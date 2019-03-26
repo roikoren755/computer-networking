@@ -20,10 +20,32 @@
 #define DELIMITERS " \t"
 #define QUIT 5
 #define PARSING_ERROR -1
+#define USAGE_ERROR 1
+#define HOSTNAME_RESOLUTION_ERROR 2
+#define SOCKET_OPENING_ERROR 1
+#define SERVER_CONNECTING_ERROR 1
+#define INTERNAL_SERVER_ERROR 1
+#define TCP_RECEIVE_ERROR 1
+#define INPUT_ERROR 1
+#define TCP_SEND_ERROR 1
+#define USAGE_ERROR 1
+#define USAGE_ERROR 1
+#define USAGE_ERROR 1
+#define USAGE_ERROR 1
+
+char hostname[MAXIMUM_RATING_TEXT_LENGTH + 1] = {0};
+char port[10] = {0};
+char inputBuffer[MAXIMUM_RATING_TEXT_LENGTH + 101] = {0};
+char receiveBuffer[MAXIMUM_RATING_TEXT_LENGTH + 101] = {0};
+int socketFd;
+
+int closeSocket(int error) {
+	close(socketFd);
+	return error;
+}
 
 int getCommandInt(char* command) {
 	char* firstArgument = strtok(command, DELIMITERS);
-	command = strtok(NULL, DELIMITERS);
 	if (!strcmp(firstArgument, list_of_courses)) {
 		return LIST_OF_COURSES;
 	}
@@ -43,129 +65,194 @@ int getCommandInt(char* command) {
 	return PARSING_ERROR;
 }
 
-int main(int argc, char* argv[]) {
-	char hostname[MAXIMUM_RATING_TEXT_LENGTH] = {};
-	char port[10] = {};
-	char* inputBuffer = (char*) malloc(sizeof(char) * (MAXIMUM_RATING_TEXT_LENGTH + 100));
-	char* receiveBuffer = (char*) malloc(sizeof(char) * MAXIMUM_RATING_TEXT_LENGTH);
-
-	if (argc > 3) {
+int verifyArguments(int argc, char* argv[]) {
+	if (argc > 3) { // No more than 2 arguments
 		printf("USAGE: %s [hostname [port]]\n", argv[0]);
-		return 1;
+		return USAGE_ERROR;
 	}
 
-	if (argc > 1) {
+	if (argc > 1) { // Host name supplied
 		strncpy(hostname, argv[1], MAXIMUM_RATING_TEXT_LENGTH);
 	} else {
 		strncpy(hostname, "localhost", 10);
 	}
 
-	if (argc > 2) {
+	if (argc > 2) { // Port supplied too
 		strncpy(port, argv[2], 10);
 	} else {
-		strncpy(port, "1337", 5);
+		sprintf(port, "%d", DEFAULT_PORT);
 	}
 
+	return SUCCESS;
+}
+
+int findAndConnectToServer() {
 	struct addrinfo* result;
 	if (getaddrinfo(hostname, port, NULL, &result) < 0) {
 		perror("Could not resolve hostname '%s'!");
-		return 2;
+		return -HOSTNAME_RESOLUTION_ERROR;
 	}
 
 	if (result == NULL) {
 		printf("No results found for hostname %s and port %s!\n", hostname, port);
-		return 3;
+		return -HOSTNAME_RESOLUTION_ERROR;
 	}
 
-	int socketFd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	socketFd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
 	if (socketFd < 0) {
 		perror("Could not open socket to server!");
-		return 4;
+		return -SOCKET_OPENING_ERROR;
 	}
 
 	if (connect(socketFd, result->ai_addr, sizeof(struct sockaddr_in)) < 0) {
 		perror("Could not connect to server!");
-		return 5;
+		return closeSocket(-SERVER_CONNECTING_ERROR);
 	}
 
-	uint32_t response;
-	char* ret = (char*) &response;
-	int size = sizeof(response);
-	if (receiveAll(socketFd, ret, &size) < 0) {
-		perror("Could not read server message!");
-		return 6;
-	}
+	return SUCCESS;
+}
 
-	if (ntohl(response)) {
-		printf("ERROR: server returned 1!");
-		return 7; // TODO - need to close socket...
-	}
+int initialHandshake() {
+	int response;
+	char username[MAXIMUM_USERNAME_LENGTH + 1];
+	char password[MAXIMUM_USERNAME_LENGTH + 1];
+
+	printf("Welcome! Please log in.\n");
 
 	do {
-		char username[MAXIMUM_USERNAME_LENGTH + 1];
-		char password[MAXIMUM_USERNAME_LENGTH + 1];
+		memset(username, 0, MAXIMUM_USERNAME_LENGTH + 1);
+		memset(password, 0, MAXIMUM_USERNAME_LENGTH + 1);
 
 		printf("Username: ");
-		fgets(username, sizeof(username), stdin);
+		fgets(username, MAXIMUM_USERNAME_LENGTH, stdin);
 		printf("Password: ");
-		fgets(password, sizeof(password), stdin);
+		fgets(password, MAXIMUM_USERNAME_LENGTH, stdin);
+
 		if (username[0] == '\0' || password[0] == '\0') {
-			printf("ERROR: WTF IS GOING ON???");
-			return 7777;
+			printf("ERROR: Empty strings received from user.\n");
+			return INPUT_ERROR;
 		}
 
-		int length = strlen(username);
-		uint32_t networkLength = htonl(length);
-		char* byteLength = (char*) &networkLength;
-		size = sizeof(networkLength);
-		if (sendAll(socketFd, byteLength, &size) < 0) {
-			printf("ERROR: Could not send username size to server!");
-			return 777;
+		if (sendString(socketFd, username) || sendString(socketFd, password)) {
+			perror("Could not send message to server.");
+			return TCP_SEND_ERROR;
 		}
 
-		if (sendAll(socketFd, username, &length) < 0) {
-			printf("ERROR: Could not send username to server!");
-			return 77777;
+		response = receivePositiveInt(socketFd);
+		if (response == -ERROR) {
+			perror("Could not read server response!");
+			return TCP_RECEIVE_ERROR;
 		}
+	} while (response != 0);
 
-		length = strlen(password);
-		networkLength = htonl(length);
-		byteLength = (char*) &networkLength;
-		size = sizeof(networkLength);
-		if (sendAll(socketFd, byteLength, &size) < 0) {
-			printf("ERROR: Could not send password size to server!");
-			return 179238;
-		}
+	printf("Hi %s, good to see you.\n", username);
 
-		if (sendAll(socketFd, password, &length) < 0) {
-			printf("ERROR: Could not send password to server!");
-			return 12301827;
-		}
+	return SUCCESS;
+}
 
-		ret = (char*) &response;
-		size = sizeof(response);
-		if (receiveAll(socketFd, ret, &size) < 0) {
-			perror("Could not read server message!");
-			return 6;
-		}
-	} while (!ntohl(response));
-
-	if (receiveAll(socketFd, receiveBuffer, &received) < 0) {
-		printf("ERROR: Could not read server message!");
-		return 1239716;
+int handleListOfCourses() {
+	if (sendPositiveInt(socketFd, LIST_OF_COURSES)) {
+		perror("Could not send requestId to server");
+		return TCP_SEND_ERROR;
 	}
 
+	int numberOfCourses = receivePositiveInt(socketFd);
+	if (numberOfCourses < 0) {
+		perror("Could not receive number of courses from server");
+		return TCP_RECEIVE_ERROR;
+	}
+
+	int courseNumber;
+	for (int i = 0; i < numberOfCourses; i++) {
+		courseNumber = receivePositiveInt(socketFd);
+		if (courseNumber < 0) {
+			perror("Could not receive course number from server");
+			return TCP_RECEIVE_ERROR;
+		}
+
+		memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
+		if (receiveString(socketFd, receiveBuffer)) {
+			perror("Could not receive course details from server");
+			return TCP_RECEIVE_ERROR;
+		}
+
+		printf("%d:\t%s\n", courseNumber, receiveBuffer);
+	}
+
+	return SUCCESS;
+}
+
+int handleAddCourse() {
+	char* argument = strtok(inputBuffer, DELIMITERS);
+	argument = strtok(NULL, DELIMITERS);
+	int courseInt = atoi(argument);
+	if (sendPositiveInt(socketFd, courseInt)) {
+		perror("Could not send course number to server");
+		return TCP_SEND_ERROR;
+	}
+
+	int response = receivePositiveInt(socketFd);
+	if (response == -ERROR) {
+		perror("Could not receive response from server");
+		return TCP_RECEIVE_ERROR;
+	} else if (response == ERROR) {
+		printf("%d exists in the database!\n", courseInt);
+	} else {
+		argument = strtok(NULL, DELIMITERS);
+		if (sendString(socketFd, argument)) {
+			perror("Could not send course name to server");
+			return TCP_SEND_ERROR;
+		}
+
+		printf("%d added successfully.\n", courseInt);
+	}
+
+	return SUCCESS;
+}
+
+int main(int argc, char* argv[]) {
+	int error = verifyArguments(argc, argv);
+	if (error) {
+		return error;
+	}
+
+	socketFd = findAndConnectToServer();
+	if (socketFd < 0) {
+		return -socketFd;
+	}
+
+	error = initialHandshake();
+	if (error) {
+		return closeSocket(error);
+	}
 
 
 	int quitEntered = 0;
 	while (!quitEntered) {
-		fgets
-		if (1) {
-			quitEntered = 1;
+		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
+		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
+		int command = getCommandInt(inputBuffer);
+		switch (command) {
+			case LIST_OF_COURSES:
+				error = handleListOfCourses();
+				if (error) {
+					return closeSocket(error);
+				}
+				break;
+			case ADD_COURSE:
+				error = handleAddCourse();
+				if (error) {
+					return closeSocket(error);
+				}
+				break;
+			case QUIT:
+				quitEntered = 1;
+				break;
+			default:
+				printf("Illegal command.\n");
+				break;
 		}
 	}
 
-	close(socketFd);
-
-	return 0;
+	return closeSocket(SUCCESS);
 }

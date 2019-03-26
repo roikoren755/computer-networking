@@ -60,7 +60,7 @@ int sendPositiveInt(int socketFd, int toSend) {
 
 int sendString(int socketFd, char* toSend) {
 	int length = strlen(toSend);
-	if (sendInt(length, socketFd)) {
+	if (sendPositiveInt(socketFd, length)) {
 		return ERROR;
 	}
 
