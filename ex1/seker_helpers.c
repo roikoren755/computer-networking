@@ -34,7 +34,6 @@ int sendAll(int socketFd, char* buffer, int* length) {
 	int bytesLeft = *length;
 	int sent;
 
-	memset(buffer, 0, *length);
 	while (total < *length) {
 		sent = send(socketFd, buffer + total, bytesLeft, 0);
 		if (sent < 0) {

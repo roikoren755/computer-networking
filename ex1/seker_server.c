@@ -3,11 +3,13 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <fcntl.h> // for open
+#include <unistd.h> // for close
 
 #include "seker_helpers.h"
 
 #define min(a,b) a<b ? a : b
-#define DEFAULT_PORT 1337
+#define IO_ERROR -5
 struct user_details{
     char userName[MAXIMUM_USERNAME_LENGTH];
     char password[MAXIMUM_USERNAME_LENGTH];
@@ -17,10 +19,11 @@ struct user_details{
 struct user_details Users[MAXIMUM_NUMBER_OF_USERS];
 int users_count;
 char *dir_path;
+char *course_list_path;
 int listen_port = DEFAULT_PORT;
 struct sockaddr_in server_addr;
 
-
+/*reads users_file and stores all usernames and passwords in Users*/
 void InitUsers(char *users_file){
     FILE *fp = fopen(users_file, "r");
     if(fp == NULL){
@@ -49,62 +52,176 @@ void InitUsers(char *users_file){
     free(buffer);
 }
 
+void InitServerFolder(){
+	//remove previous files if exist
+	char removeFiles[20 + strlen(dir_path)];
+	if(dir_path[0]=='/') //absolut path
+		sprintf((char*)&removeFiles, "exec rm -r %s/*", dir_path);
+	else //relative path
+		sprintf((char*)&removeFiles, "exec rm -r ./%s/*", dir_path);
+	system(removeFiles);
+
+	//create course_list file
+	course_list_path = malloc(strlen(dir_path) + 20);
+	if(course_list_path==NULL){
+		printf("ERROR: can't allocate course_list_path string");
+		return;
+	}
+	sprintf(course_list_path, "%s/courselist.txt", dir_path);
+	FILE *courselist = fopen(course_list_path, "w+");
+	if(courselist==NULL){
+		printf("ERROR: can't create file %s", course_list_path);
+		return;
+	}
+	fclose(courselist);
+}
+
 /*receives username and password from the client, validates and returns the username*/
 char * GetAndValidateUsername(int client_fd){
+	char *username = calloc(sizeof(char), MAXIMUM_USERNAME_LENGTH+1);
+	char password[MAXIMUM_USERNAME_LENGTH+1]={0};
+	if(username == NULL){
+		printf("ERROR: can't allocate username memory\n");
+		return NULL;
+	}
+
 	//send greeting
-	uint32_t success = htonl(SUCCESS);
-	int success_len = sizeof(success);
-	sendAll(client_fd, (char*)&success, &success_len);
-
-	//read user name length and actual user name
-	uint32_t str_len;
-	int len = sizeof(str_len);
-	char *username = malloc(MAXIMUM_USERNAME_LENGTH+1);
-	if(receiveAll(client_fd, (char*)&str_len, &len)){
-		printf("ERROR: can't read username length");
-		free(username);
-		return NULL;
-	}
-	int username_len = min(ntohl(str_len), MAXIMUM_USERNAME_LENGTH);
-	if(receiveAll(client_fd, username, &username_len)){
-		printf("ERROR: can't read full username");
-		free(username);
-		return NULL;
-	}
-
-	//read password length and actual password
-	len = sizeof(str_len);
-	if(receiveAll(client_fd, (char*)&str_len, &len)){
-		printf("ERROR: can't read password length");
-		free(username);
-		return NULL;
-	}
-	char password[MAXIMUM_USERNAME_LENGTH+1];
-	int password_len = min(ntohl(str_len), MAXIMUM_USERNAME_LENGTH);
-	if(receiveAll(client_fd, (char*)&password, &password_len)){
-		printf("ERROR: can't read full password");
-		free(username);
-		return NULL;
-	}
-
+	sendPositiveInt(client_fd, SUCCESS);
+	//get username and password
+	receiveString(client_fd, username);
+	receiveString(client_fd, (char*)&password);
 	//find and validate username and password
 	int i;
 	for(i=0; i<users_count; i++){
 		if(strcmp(Users[i].userName, username)==0){
 			if(strcmp(Users[i].password, password)==0){
-				sendAll(client_fd, (char*)&success, &success_len);
+				sendPositiveInt(client_fd, SUCCESS);
 				return username;
 			}
 		}
 	}
 	//username or password don't match
-	success = htonl(ERROR);
-	sendAll(client_fd, (char*)&success, &success_len);
+	sendPositiveInt(client_fd, ERROR);
 	free(username);
 	return NULL;
 }
+int courseNumExist(int courseNum){
+	FILE *courseList = fopen(course_list_path, "a+");
+	if(courseList == NULL){
+		printf("ERROR: can't open %s", course_list_path);
+		return IO_ERROR;
+	}
+	char buffer[MAXIMUM_COURSE_NAME_LENGTH+10]={0};
+	char *currCourseNum;
+	size_t length;
+	char *bufferAddr = (char*)&buffer;
+	while(getline(&bufferAddr, &length, courseList) > 0){
+		currCourseNum = strtok(bufferAddr, "\t");
+		if(atoi(currCourseNum) == courseNum){
+			fclose(courseList);
+			return 1;
+		}
+	}
+	//course doesn't exist
+	fclose(courseList);
+	return 0;
+}
+/*receives courseNum from the client. sends ERROR if courseNum exists
+ * if not, receives course name from the client and adds to courseList
+ */
+int addCousre(int client_fd){
+	int courseNum = receivePositiveInt(client_fd);
 
-/*waits for new connections*/
+	int result = courseNumExist(courseNum);
+	if(result<0){
+		//error occurred
+		return result;
+	}
+	if(result>0){
+		//courseNum already exist
+		printf("course num %d already exist", courseNum);
+		sendPositiveInt(client_fd, ERROR);
+		return SUCCESS;
+	}
+
+	//course number doesn't exist in the list
+	FILE *courseList = fopen(course_list_path, "a+");
+	if(courseList==NULL){
+		printf("ERROR: can't open %s", course_list_path);
+		return IO_ERROR;
+	}
+	sendPositiveInt(client_fd, SUCCESS);
+	char buffer[MAXIMUM_COURSE_NAME_LENGTH+10]={0};
+	receiveString(client_fd, (char*)&buffer);
+	fprintf(courseList, "%d\t%s\n", courseNum, buffer);
+	fclose(courseList);
+	return SUCCESS;
+}
+
+int rateCourse(int client_fd, char *username){
+	int courseNum = receivePositiveInt(client_fd);
+	if(courseNum==-ERROR){
+		printf("ERROR: can't receive courseNum from client %d", client_fd);
+		return -ERROR;
+	}
+	int result = courseNumExist(courseNum);
+	if( result < 0)
+		return -ERROR;
+	if(result==0){
+		//courseNum doesn't exist
+		sendPositiveInt(client_fd, ERROR);
+		return SUCCESS;
+	}
+
+	char courseFilePath[strlen(dir_path)+10];
+	memset(&courseFilePath, 0, sizeof(courseFilePath));
+	sprintf((char*)&courseFilePath, "%s/%d", dir_path, courseNum);
+	FILE *courseFile = fopen(courseFilePath, "a+");
+	if(courseFile==NULL){
+		printf("ERROR: can't open %s", courseFilePath);
+		return IO_ERROR;
+	}
+	int ratingValue = receivePositiveInt(client_fd);
+	if(ratingValue==-ERROR){
+		printf("ERROR: can't receive ratingValue from client %d", client_fd);
+		fclose(courseFile);
+		return -ERROR;
+	}
+	char ratingText[MAXIMUM_RATING_TEXT_LENGTH+10]={0};
+	if(receiveString(client_fd, (char*)&ratingText)<0){
+		printf("ERROR: can't receive rating text from client %d", client_fd);
+		fclose(courseFile);
+		return -ERROR;
+	}
+	fprintf(courseFile, "%s:\t%d\t%s\n", username, ratingValue, ratingText);
+	fclose(courseFile);
+	return SUCCESS;
+
+
+}
+/*receives commands from client and responses accordingly*/
+int HandleCommands(int client_fd, char *username){
+	int command;
+	int result;
+	while(1){
+		command = receivePositiveInt(client_fd);
+		switch(command){
+			case ADD_COURSE:
+				if((result = addCousre(client_fd)) < 0)
+					return result;
+				break;
+			case RATE_COURSE:
+				if((result = rateCourse(client_fd, username)) < 0)
+					return result;
+				break;
+			default:
+				break;
+		}
+	}
+	return 0;
+}
+
+/*accepting new connections*/
 void StartListening(){
     int socket_fd = socket(PF_INET, SOCK_STREAM, 0); //set socket to (IPv4, TCP, default protocol)
     if(socket_fd<0){
@@ -132,9 +249,10 @@ void StartListening(){
         }
         char *username = GetAndValidateUsername(client_fd);
         if(username == NULL){
+        	printf("ERROR: username or password are incorrect");
         	close(client_fd);
         }
-        HandleCommands(username);
+        HandleCommands(client_fd, username);
     }
 
     close(socket_fd);
@@ -142,21 +260,18 @@ void StartListening(){
 }
 
 
-/*receive commands from client and responses accordingly*/
-void HandleCommands(char *username){
-
-}
-
 int main(int argc, char **argv)
 {
-	if(argc<2){
+	if(argc<3){
 	        printf("ERROR: missing user_file or dir_path arguments");
 	        return -1;
 	    }
 	    char *users_file = argv[1];
 	    InitUsers(users_file);
 	    dir_path = argv[2];
-	    if(argc>2){
+	    InitServerFolder();
+
+	    if(argc>3){
 	        listen_port = atoi(argv[3]);
 	    }
 
