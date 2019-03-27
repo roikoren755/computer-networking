@@ -401,7 +401,7 @@ int handleUserCommands() {
 	return closeSocket(SUCCESS);
 }
 
-int _main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
 	int error = verifyArguments(argc, argv);
 	if (error) {
 		return error;
