@@ -16,6 +16,7 @@
 #define MAXIMUM_USERNAME_LENGTH 15
 #define MAXIMUM_NUMBER_OF_USERS 25
 #define DEFAULT_PORT 1337
+#define END_OF_LIST "end_of_list"
 
 /***
  * Receive *length bytes of data from socketFd, and store them in buffer.

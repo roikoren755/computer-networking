@@ -10,6 +10,9 @@
 
 #define min(a,b) a<b ? a : b
 #define IO_ERROR -5
+#define TCP_RECEIVE_ERROR 5
+#define TCP_SEND_ERROR 7
+
 struct user_details{
     char userName[MAXIMUM_USERNAME_LENGTH];
     char password[MAXIMUM_USERNAME_LENGTH];
@@ -67,7 +70,7 @@ void InitServerFolder(){
 		printf("ERROR: can't allocate course_list_path string");
 		return;
 	}
-	sprintf(course_list_path, "%s/courselist.txt", dir_path);
+	sprintf(course_list_path, "%s/courselist", dir_path);
 	FILE *courselist = fopen(course_list_path, "w+");
 	if(courselist==NULL){
 		printf("ERROR: can't create file %s", course_list_path);
@@ -105,6 +108,7 @@ char * GetAndValidateUsername(int client_fd){
 	free(username);
 	return NULL;
 }
+
 int courseNumExist(int courseNum){
 	FILE *courseList = fopen(course_list_path, "a+");
 	if(courseList == NULL){
@@ -126,6 +130,7 @@ int courseNumExist(int courseNum){
 	fclose(courseList);
 	return 0;
 }
+
 /*receives courseNum from the client. sends ERROR if courseNum exists
  * if not, receives course name from the client and adds to courseList
  */
@@ -155,6 +160,7 @@ int addCousre(int client_fd){
 	receiveString(client_fd, (char*)&buffer);
 	fprintf(courseList, "%d\t%s\n", courseNum, buffer);
 	fclose(courseList);
+
 	return SUCCESS;
 }
 
@@ -162,16 +168,18 @@ int rateCourse(int client_fd, char *username){
 	int courseNum = receivePositiveInt(client_fd);
 	if(courseNum==-ERROR){
 		printf("ERROR: can't receive courseNum from client %d", client_fd);
-		return -ERROR;
+		return TCP_RECEIVE_ERROR;
 	}
 	int result = courseNumExist(courseNum);
 	if( result < 0)
-		return -ERROR;
+		return result;
 	if(result==0){
 		//courseNum doesn't exist
 		sendPositiveInt(client_fd, ERROR);
 		return SUCCESS;
 	}
+	else
+		sendPositiveInt(client_fd, SUCCESS);
 
 	char courseFilePath[strlen(dir_path)+10];
 	memset(&courseFilePath, 0, sizeof(courseFilePath));
@@ -196,9 +204,52 @@ int rateCourse(int client_fd, char *username){
 	fprintf(courseFile, "%s:\t%d\t%s\n", username, ratingValue, ratingText);
 	fclose(courseFile);
 	return SUCCESS;
-
-
 }
+
+int getRate(int client_fd){
+	//receive courseNum from client
+	int courseNum;
+	if((courseNum = receivePositiveInt(client_fd)) < 0){
+		printf("ERROR: can't receive courseNum from client\n");
+		return TCP_RECEIVE_ERROR;
+	}
+	//check courseNum exists
+	int courseExist = courseNumExist(courseNum);
+	if(courseExist==0){
+		printf("ERROR: course %d doesn't exist\n", courseNum);
+		return SUCCESS;
+	}
+	if(courseExist < 0){
+		return courseExist;
+	}
+	//open course file
+	char courseFilePath[strlen(dir_path)+10];
+	memset(&courseFilePath, 0, sizeof(courseFilePath));
+	sprintf((char*)&courseFilePath, "%s/%d", dir_path, courseNum);
+	FILE *courseFile = fopen((char*)&courseFilePath, "a+");
+	if(courseFile == NULL){
+		printf("ERROR: can't open course %d file", courseNum);
+		return IO_ERROR;
+	}
+	//send entire file to client, line by line
+	char *buffer; //[MAXIMUM_USERNAME_LENGTH + MAXIMUM_RATING_TEXT_LENGTH + 10];
+	size_t length=0;
+	int bytesread;
+	while(1){
+        if((bytesread = getline(&buffer, &length, courseFile)) < 0){
+            break;
+        }
+		if(sendString(client_fd, buffer)){
+			printf("ERROR: can't send rating to client\n");
+			free(buffer);
+			return TCP_SEND_ERROR;
+		}
+	}
+	sendString(client_fd, END_OF_LIST);
+	free(buffer);
+	return SUCCESS;
+}
+
 /*receives commands from client and responses accordingly*/
 int HandleCommands(int client_fd, char *username){
 	int command;
@@ -212,6 +263,10 @@ int HandleCommands(int client_fd, char *username){
 				break;
 			case RATE_COURSE:
 				if((result = rateCourse(client_fd, username)) < 0)
+					return result;
+				break;
+			case GET_RATE:
+				if((result = getRate(client_fd)) < 0)
 					return result;
 				break;
 			default:
@@ -258,7 +313,6 @@ void StartListening(){
     close(socket_fd);
     return;
 }
-
 
 int main(int argc, char **argv)
 {

@@ -55,7 +55,6 @@ int closeSocket(int exitCode) {
 int getCommandInt(char* command) {
 	char* firstArgument = strtok(command, DELIMITERS);
 	if (!strcmp(firstArgument, list_of_courses)) {
-		command[strlen(list_of_courses)]='\t';
 		return LIST_OF_COURSES;
 	}
 
@@ -69,8 +68,12 @@ int getCommandInt(char* command) {
 		return RATE_COURSE;
 	}
 
+	if (!strcmp(firstArgument, get_rate)) {
+			command[strlen(get_rate)]='\t';
+			return GET_RATE;
+	}
+
 	if (!strcmp(firstArgument, quit)) {
-		command[strlen(quit)]='\t';
 		return QUIT;
 	}
 
@@ -281,6 +284,16 @@ int handleRateCourse() {
 		return TCP_SEND_ERROR;
 	}
 
+	int response;
+	if ((response = receivePositiveInt(socketFd))==-ERROR) {
+			perror("Could not receive rate_course response from server");
+			return TCP_RECEIVE_ERROR;
+	}
+	if(response==ERROR){
+		printf("ERROR: %d doesn't exist", courseInt);
+		return SUCCESS;
+	}
+
 	argument = strtok(NULL, DELIMITERS);
 	int grade = atoi(argument);
 	if (sendPositiveInt(socketFd, grade)) {
@@ -293,17 +306,8 @@ int handleRateCourse() {
 		perror("Could not send rating text to server");
 		return TCP_SEND_ERROR;
 	}
-	int response;
-	if ((response = receivePositiveInt(socketFd))==-ERROR) {
-			perror("Could not receive rate_course response from server");
-			return TCP_RECEIVE_ERROR;
-	}
-	if(response==ERROR)
-		printf("ERROR: %d doesn't exist");
 
-	else
-		printf("%d added successfully.\n", courseInt);
-
+	printf("%d added successfully.\n", courseInt);
 	return SUCCESS;
 }
 
@@ -317,38 +321,24 @@ int handleGetRate() {
 		perror("Could not send requestId to server");
 		return TCP_SEND_ERROR;
 	}
-
-	int numberOfRatings = receivePositiveInt(socketFd);
-	if (numberOfRatings < 0) {
-		perror("Could not receive number of ratings from server");
-		return TCP_RECEIVE_ERROR;
+	char* courseNum = strtok(inputBuffer, DELIMITERS);
+	courseNum = strtok(NULL, DELIMITERS);
+	if (sendPositiveInt(socketFd, atoi(courseNum))) {
+			perror("Could not send courseNum to server");
+			return TCP_SEND_ERROR;
 	}
 
-	int courseNumber;
-	char user[MAXIMUM_USERNAME_LENGTH + 1] = {0};
-	int i;
-	for (i = 0; i < numberOfRatings; i++) {
-		memset(user, 0, MAXIMUM_USERNAME_LENGTH);
-		if (receiveString(socketFd, user)) {
-			perror("Could not receive user from server");
-			return TCP_RECEIVE_ERROR;
-		}
-
-		courseNumber = receivePositiveInt(socketFd);
-		if (courseNumber < 0) {
-			perror("Could not receive course number from server");
-			return TCP_RECEIVE_ERROR;
-		}
-
+	while(1){
 		memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
-		if (receiveString(socketFd, receiveBuffer)) {
-			perror("Could not receive course details from server");
+		if (receiveString(socketFd, receiveBuffer)){
+			perror("Could not receive rating details from server");
 			return TCP_RECEIVE_ERROR;
 		}
-
-		printf("%s:\t%d\t%s\n", user, courseNumber, receiveBuffer);
+		if(strcmp(receiveBuffer, END_OF_LIST))
+			printf("%s", receiveBuffer);
+		else
+			break;
 	}
-
 	return SUCCESS;
 }
 
@@ -401,7 +391,7 @@ int handleUserCommands() {
 	return closeSocket(SUCCESS);
 }
 
-int _main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
 	int error = verifyArguments(argc, argv);
 	if (error) {
 		return error;
