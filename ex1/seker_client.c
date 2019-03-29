@@ -18,7 +18,7 @@
 #define quit "quit"
 #define DELIMITERS " \t"
 #define QUOTATION_MARK "\""
-#define QUIT 5
+
 #define PARSING_ERROR -1
 #define USAGE_ERROR 1
 #define HOSTNAME_RESOLUTION_ERROR 2
@@ -54,6 +54,9 @@ int closeSocket(int exitCode) {
  */
 int getCommandInt(char* command) {
 	char* firstArgument = strtok(command, DELIMITERS);
+	if(firstArgument[strlen(firstArgument)-1]=='\n')
+		firstArgument[strlen(firstArgument)-1]='\0';
+
 	if (!strcmp(firstArgument, list_of_courses)) {
 		return LIST_OF_COURSES;
 	}
@@ -200,28 +203,16 @@ int handleListOfCourses() {
 		return TCP_SEND_ERROR;
 	}
 
-	int numberOfCourses = receivePositiveInt(socketFd);
-	if (numberOfCourses < 0) {
-		perror("Could not receive number of courses from server");
-		return TCP_RECEIVE_ERROR;
-	}
-
-	int courseNumber;
-	int i;
-	for (i = 0; i < numberOfCourses; i++) {
-		courseNumber = receivePositiveInt(socketFd);
-		if (courseNumber < 0) {
-			perror("Could not receive course number from server");
-			return TCP_RECEIVE_ERROR;
-		}
-
+	while(1){
 		memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
-		if (receiveString(socketFd, receiveBuffer)) {
-			perror("Could not receive course details from server");
+		if (receiveString(socketFd, receiveBuffer)){
+			perror("Could not receive course list from server");
 			return TCP_RECEIVE_ERROR;
 		}
-
-		printf("%d:\t%s\n", courseNumber, receiveBuffer);
+		if(strcmp(receiveBuffer, END_OF_LIST))
+			printf("%s", receiveBuffer);
+		else
+			break;
 	}
 
 	return SUCCESS;
@@ -380,6 +371,7 @@ int handleUserCommands() {
 				}
 				break;
 			case QUIT:
+				sendPositiveInt(socketFd, QUIT);
 				quitEntered = 1;
 				break;
 			default:
