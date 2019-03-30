@@ -33,7 +33,7 @@ void InitUsers(char *users_file){
         printf("ERROR: can't open file %s", users_file);
         exit(1);
     }
-    char *buffer;
+    char *buffer = calloc(sizeof(char), MAXIMUM_USERNAME_LENGTH*3);
     size_t length = 0;
     int bytesread;
     int i=0;
