@@ -87,5 +87,8 @@ int receivePositiveInt(int socketFd) {
 }
 
 void removeTrailingChar(char* string) {
-	string[strlen(string) - 1] = '\0';
+	char end = string[strlen(string) - 1];
+	if (end == ' ' || end == '\t' || end == '\n') {
+		string[strlen(string) - 1] = '\0';
+	}
 }

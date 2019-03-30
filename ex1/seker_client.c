@@ -46,6 +46,37 @@ int closeSocket(int exitCode) {
 	return exitCode;
 }
 
+int validateInputIsNumber(char* input) {
+	if (input == NULL) {
+		return ERROR;
+	}
+
+	int i = 0;
+	char c;
+	while (input[i] != '\0') {
+		c = input[i];
+		if (c < '0' || c > '9') {
+			return ERROR;
+		}
+
+		i++;
+	}
+
+	return SUCCESS;
+}
+
+int validateInputIsInQuotes(char* input) {
+	if (input == NULL) {
+		return ERROR;
+	}
+
+	if (input[0] != '"' || input[strlen(input) - 1] != '"') {
+		return ERROR;
+	}
+
+	return SUCCESS;
+}
+
 /***
  * Parses command to get an integer representation for ease of handling
  * @param command - command to parse
@@ -53,30 +84,83 @@ int closeSocket(int exitCode) {
  * 		   PARSING_ERROR otherwise
  */
 int getCommandInt(char* command) {
-	char* firstArgument = strtok(command, DELIMITERS);
-	if(firstArgument[strlen(firstArgument)-1]=='\n')
-		firstArgument[strlen(firstArgument)-1]='\0';
+	char buffer[MAXIMUM_RATING_TEXT_LENGTH + 101] = {0};
 
-	if (!strcmp(firstArgument, list_of_courses)) {
+	strncpy(buffer, command, MAXIMUM_RATING_TEXT_LENGTH + 100);
+
+	char* argument = strtok(buffer, DELIMITERS);
+	char* rest = strtok(NULL, DELIMITERS);
+	if (argument[strlen(argument) - 1] == '\n') {
+		argument[strlen(argument) - 1] = '\0';
+	}
+
+	if (!strcmp(argument, list_of_courses)) {
+		if (rest != NULL) {
+			return PARSING_ERROR;
+		}
+
 		return LIST_OF_COURSES;
 	}
 
-	if (!strcmp(firstArgument, add_course)) {
-		command[strlen(add_course)]='\t';
+	if (!strcmp(argument, add_course)) {
+		if (validateInputIsNumber(rest) != SUCCESS) {
+			return PARSING_ERROR;
+		}
+
+		rest = strtok(NULL, "\n");
+		if (validateInputIsInQuotes(rest) != SUCCESS) {
+			return PARSING_ERROR;
+		}
+
+		rest = strtok(NULL, DELIMITERS);
+		if (rest != NULL) {
+			return PARSING_ERROR;
+		}
+
 		return ADD_COURSE;
 	}
 
-	if (!strcmp(firstArgument, rate_course)) {
-		command[strlen(rate_course)]='\t';
+	if (!strcmp(argument, rate_course)) {
+		if (validateInputIsNumber(rest) != SUCCESS) {
+			return PARSING_ERROR;
+		}
+
+		rest = strtok(NULL, DELIMITERS);
+		if (validateInputIsNumber(rest) != SUCCESS) {
+			return PARSING_ERROR;
+		}
+
+		rest = strtok(NULL, "\n");
+		if (validateInputIsInQuotes(rest) != SUCCESS) {
+			return PARSING_ERROR;
+		}
+
+		rest = strtok(NULL, DELIMITERS);
+		if (rest != NULL) {
+			return PARSING_ERROR;
+		}
+
 		return RATE_COURSE;
 	}
 
-	if (!strcmp(firstArgument, get_rate)) {
-			command[strlen(get_rate)]='\t';
-			return GET_RATE;
+	if (!strcmp(argument, get_rate)) {
+		if (validateInputIsNumber(rest) != SUCCESS) {
+			return PARSING_ERROR;
+		}
+
+		rest = strtok(NULL, DELIMITERS);
+		if (rest != NULL) {
+			return PARSING_ERROR;
+		}
+
+		return GET_RATE;
 	}
 
-	if (!strcmp(firstArgument, quit)) {
+	if (!strcmp(argument, quit)) {
+		if (rest != NULL) {
+			return PARSING_ERROR;
+		}
+
 		return QUIT;
 	}
 
@@ -134,7 +218,7 @@ int findAndConnectToServer() {
 		return SOCKET_OPENING_ERROR;
 	}
 
-	if (connect(socketFd, result->ai_addr, sizeof(struct sockaddr_in)) < 0) {
+	if (connect(socketFd, result->ai_addr, (socklen_t) result->ai_addrlen) < 0) {
 		perror("Could not connect to server!");
 		return closeSocket(SERVER_CONNECTING_ERROR);
 	}
@@ -148,6 +232,7 @@ int findAndConnectToServer() {
  * 		   SUCCESS otherwise
  */
 int initialHandshake() {
+	printf("About to handshake\n");
 	int response = receivePositiveInt(socketFd);
 	if (response != SUCCESS) {
 		printf("ERROR: Could not initialize handshake!");
@@ -161,11 +246,16 @@ int initialHandshake() {
 	do {
 		memset(username, 0, MAXIMUM_USERNAME_LENGTH + 1);
 		memset(password, 0, MAXIMUM_USERNAME_LENGTH + 1);
-
-		printf("Username: ");
-		fgets(username, MAXIMUM_USERNAME_LENGTH, stdin);
-		printf("Password: ");
-		fgets(password, MAXIMUM_USERNAME_LENGTH, stdin);
+		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
+		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
+		char* token = strtok(inputBuffer, DELIMITERS);
+		token = strtok(NULL, DELIMITERS);
+		strncpy(username, inputBuffer, MAXIMUM_USERNAME_LENGTH);
+		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
+		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
+		token = strtok(inputBuffer, DELIMITERS);
+		token = strtok(NULL, DELIMITERS);
+		strncpy(password, inputBuffer, MAXIMUM_USERNAME_LENGTH);
 
 		if (username[0] == '\0' || password[0] == '\0') {
 			printf("ERROR: Empty strings received from user.\n");
@@ -203,16 +293,19 @@ int handleListOfCourses() {
 		return TCP_SEND_ERROR;
 	}
 
-	while(1){
+	while (1) {
 		memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
-		if (receiveString(socketFd, receiveBuffer)){
+		if (receiveString(socketFd, receiveBuffer)) {
 			perror("Could not receive course list from server");
 			return TCP_RECEIVE_ERROR;
 		}
-		if(strcmp(receiveBuffer, END_OF_LIST))
+
+		if (strcmp(receiveBuffer, END_OF_LIST)) {
 			printf("%s", receiveBuffer);
-		else
+		}
+		else {
 			break;
+		}
 	}
 
 	return SUCCESS;
@@ -275,12 +368,13 @@ int handleRateCourse() {
 		return TCP_SEND_ERROR;
 	}
 
-	int response;
-	if ((response = receivePositiveInt(socketFd))==-ERROR) {
-			perror("Could not receive rate_course response from server");
-			return TCP_RECEIVE_ERROR;
+	int response = receivePositiveInt(socketFd);
+	if (response == -ERROR) {
+		perror("Could not receive rate_course response from server");
+		return TCP_RECEIVE_ERROR;
 	}
-	if(response==ERROR){
+
+	if (response == ERROR) {
 		printf("ERROR: %d doesn't exist", courseInt);
 		return SUCCESS;
 	}
@@ -312,23 +406,27 @@ int handleGetRate() {
 		perror("Could not send requestId to server");
 		return TCP_SEND_ERROR;
 	}
+
 	char* courseNum = strtok(inputBuffer, DELIMITERS);
 	courseNum = strtok(NULL, DELIMITERS);
 	if (sendPositiveInt(socketFd, atoi(courseNum))) {
-			perror("Could not send courseNum to server");
-			return TCP_SEND_ERROR;
+		perror("Could not send courseNum to server");
+		return TCP_SEND_ERROR;
 	}
 
-	while(1){
+	while (1) {
 		memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
-		if (receiveString(socketFd, receiveBuffer)){
+		if (receiveString(socketFd, receiveBuffer)) {
 			perror("Could not receive rating details from server");
 			return TCP_RECEIVE_ERROR;
 		}
-		if(strcmp(receiveBuffer, END_OF_LIST))
+
+		if (strcmp(receiveBuffer, END_OF_LIST)) {
 			printf("%s", receiveBuffer);
-		else
+		}
+		else {
 			break;
+		}
 	}
 	return SUCCESS;
 }
@@ -394,10 +492,14 @@ int main(int argc, char* argv[]) {
 		return error;
 	}
 
+	printf("After connecting\n");
+
 	error = initialHandshake();
 	if (error) {
 		return closeSocket(error);
 	}
+
+	printf("After handshake\n");
 
 	return handleUserCommands();
 }
