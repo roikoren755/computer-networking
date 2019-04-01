@@ -46,7 +46,7 @@ int closeSocket(int exitCode) {
 	return exitCode;
 }
 
-int validateInputIsNumber(char* input) {
+int validateInputIsNumber(char* input, int numberOfDigits) {
 	if (input == NULL) {
 		return ERROR;
 	}
@@ -62,7 +62,7 @@ int validateInputIsNumber(char* input) {
 		i++;
 	}
 
-	return SUCCESS;
+	return i > numberOfDigits ? ERROR : SUCCESS;
 }
 
 int validateInputIsInQuotes(char* input) {
@@ -103,7 +103,7 @@ int getCommandInt(char* command) {
 	}
 
 	if (!strcmp(argument, add_course)) {
-		if (validateInputIsNumber(rest) != SUCCESS) {
+		if (validateInputIsNumber(rest, 4) != SUCCESS) {
 			return PARSING_ERROR;
 		}
 
@@ -121,12 +121,12 @@ int getCommandInt(char* command) {
 	}
 
 	if (!strcmp(argument, rate_course)) {
-		if (validateInputIsNumber(rest) != SUCCESS) {
+		if (validateInputIsNumber(rest, 4) != SUCCESS) {
 			return PARSING_ERROR;
 		}
 
 		rest = strtok(NULL, DELIMITERS);
-		if (validateInputIsNumber(rest) != SUCCESS) {
+		if (validateInputIsNumber(rest, 3) != SUCCESS) {
 			return PARSING_ERROR;
 		}
 
@@ -144,7 +144,7 @@ int getCommandInt(char* command) {
 	}
 
 	if (!strcmp(argument, get_rate)) {
-		if (validateInputIsNumber(rest) != SUCCESS) {
+		if (validateInputIsNumber(rest, 4) != SUCCESS) {
 			return PARSING_ERROR;
 		}
 
@@ -283,6 +283,10 @@ int initialHandshake() {
 			perror("Could not read server response!");
 			return TCP_RECEIVE_ERROR;
 		}
+
+		if (response == ERROR) {
+			printf("Failed to login.\n");
+		}
 	} while (response != 0);
 
 	printf("Hi %s, good to see you.\n", username);
@@ -400,7 +404,7 @@ int handleRateCourse() {
 		return TCP_SEND_ERROR;
 	}
 
-	printf("%d added successfully.\n", courseInt);
+	printf("%d rated successfully.\n", courseInt);
 	return SUCCESS;
 }
 
@@ -504,8 +508,6 @@ int main(int argc, char* argv[]) {
 	if (error) {
 		return closeSocket(error);
 	}
-
-	printf("After handshake\n");
 
 	return handleUserCommands();
 }
