@@ -232,7 +232,6 @@ int findAndConnectToServer() {
  * 		   SUCCESS otherwise
  */
 int initialHandshake() {
-	printf("About to handshake\n");
 	int response = receivePositiveInt(socketFd);
 	if (response != SUCCESS) {
 		printf("ERROR: Could not initialize handshake!");
@@ -241,21 +240,30 @@ int initialHandshake() {
 	char username[MAXIMUM_USERNAME_LENGTH + 1];
 	char password[MAXIMUM_USERNAME_LENGTH + 1];
 
-	printf("Welcome! Please log in.\n");
-
 	do {
+		printf("Welcome! Please log in.\n");
 		memset(username, 0, MAXIMUM_USERNAME_LENGTH + 1);
 		memset(password, 0, MAXIMUM_USERNAME_LENGTH + 1);
 		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
 		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
-		char* token = strtok(inputBuffer, DELIMITERS);
-		token = strtok(NULL, DELIMITERS);
-		strncpy(username, inputBuffer, MAXIMUM_USERNAME_LENGTH);
+		char* token = strtok(inputBuffer, " ");
+		token = strtok(NULL, " ");
+		if (!token) {
+			printf("ERROR: malformed input\n");
+			response = ERROR;
+			continue;
+		}
+		strncpy(username, token, MAXIMUM_USERNAME_LENGTH);
 		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
 		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
-		token = strtok(inputBuffer, DELIMITERS);
-		token = strtok(NULL, DELIMITERS);
-		strncpy(password, inputBuffer, MAXIMUM_USERNAME_LENGTH);
+		token = strtok(inputBuffer, " ");
+		token = strtok(NULL, " ");
+		if (!token) {
+			printf("ERROR: malformed input\n");
+			response = ERROR;
+			continue;
+		}
+		strncpy(password, token, MAXIMUM_USERNAME_LENGTH);
 
 		if (username[0] == '\0' || password[0] == '\0') {
 			printf("ERROR: Empty strings received from user.\n");
@@ -491,8 +499,6 @@ int main(int argc, char* argv[]) {
 	if (error) {
 		return error;
 	}
-
-	printf("After connecting\n");
 
 	error = initialHandshake();
 	if (error) {
