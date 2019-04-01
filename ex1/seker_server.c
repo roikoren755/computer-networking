@@ -368,17 +368,19 @@ void StartListening() {
 
     while (1) {
         int client_fd = accept(socket_fd, (struct sockaddr*) &client_addr, &client_addrsize);
-		printf("About to handshake\n");
         if (client_fd<0) {
             printf("ERROR: can't accept new connection\n");
             return;
         }
 
-        char *username = GetAndValidateUsername(client_fd);
-        if (username == NULL) {
-        	printf("ERROR: username or password are incorrect\n");
-        	close(client_fd);
+        char* username = NULL;
+        while (username == NULL) {
+        	username = GetAndValidateUsername(client_fd);
+        	if (username == NULL) {
+        		printf("ERROR: username or password are incorrect\n");
+        	}
         }
+        
         int result = HandleCommands(client_fd, username);
         if (result) {
         	close(client_fd);
