@@ -93,6 +93,10 @@ int getCommandInt(char* command) {
 	if (argument[strlen(argument) - 1] == '\n') {
 		argument[strlen(argument) - 1] = '\0';
 	}
+	if (rest && rest[strlen(rest) - 1] == '\n') {
+			rest[strlen(rest) - 1] = '\0';
+	}
+
 
 	if (!strcmp(argument, list_of_courses)) {
 		if (rest != NULL) {
@@ -425,7 +429,11 @@ int handleGetRate() {
 		perror("Could not send courseNum to server");
 		return TCP_SEND_ERROR;
 	}
-
+	int courseExist = receivePositiveInt(socketFd);
+	if(courseExist==ERROR){
+		printf("ERROR: course %d doesn't exist\n", atoi(courseNum));
+		return SUCCESS;
+	}
 	while (1) {
 		memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
 		if (receiveString(socketFd, receiveBuffer)) {

@@ -34,8 +34,8 @@ void InitUsers(char* users_file) {
         exit(1);
     }
 
-    char *buffer = calloc(sizeof(char), MAXIMUM_USERNAME_LENGTH * 3);
-    size_t length = 0;
+    size_t length = MAXIMUM_USERNAME_LENGTH * 3;
+    char *buffer = calloc(sizeof(char), length);
     int bytesread;
     int i=0;
     while (i < MAXIMUM_NUMBER_OF_USERS) {
@@ -95,27 +95,26 @@ char* GetAndValidateUsername(int client_fd) {
 		printf("ERROR: can't allocate username memory\n");
 		return NULL;
 	}
-
 	//send greeting
 	sendPositiveInt(client_fd, SUCCESS);
-	//get username and password
-	receiveString(client_fd, username);
-	receiveString(client_fd, (char*) &password);
-	//find and validate username and password
+
 	int i;
-	for (i=0; i<users_count; i++) {
-		if (!strcmp(Users[i].userName, username)) {
-			if (!strcmp(Users[i].password, password)) {
-				sendPositiveInt(client_fd, SUCCESS);
-				return username;
+	while(1){
+		//get username and password
+		receiveString(client_fd, username);
+		receiveString(client_fd, (char*) &password);
+		//find and validate username and password
+		for (i=0; i<users_count; i++) {
+			if (!strcmp(Users[i].userName, username)) {
+				if (!strcmp(Users[i].password, password)) {
+					sendPositiveInt(client_fd, SUCCESS);
+					return username;
+				}
 			}
 		}
+		//username or password don't match
+		sendPositiveInt(client_fd, ERROR);
 	}
-
-	//username or password don't match
-	sendPositiveInt(client_fd, ERROR);
-	free(username);
-	return NULL;
 }
 
 /* send entire file to client, line by line */
@@ -157,9 +156,10 @@ int findCourseNum(int courseNum){
 		return IO_ERROR;
 	}
 
-	char buffer[MAXIMUM_COURSE_NAME_LENGTH + 10] = {0};
 	char* currCourseNum;
-	size_t length;
+	size_t length = MAXIMUM_COURSE_NAME_LENGTH + 10;
+	char buffer[length];
+	memset(&buffer, 0, length);
 	char* bufferAddr = (char*) &buffer;
 	while (getline(&bufferAddr, &length, courseList) > 0) {
 		currCourseNum = strtok(bufferAddr, ":");
@@ -283,12 +283,13 @@ int getRate(int client_fd) {
 	int courseExist = findCourseNum(courseNum);
 	if (courseExist < 0) {
 		printf("ERROR: course %d doesn't exist\n", courseNum);
+		sendPositiveInt(client_fd, ERROR);
 		return SUCCESS;
 	}
-
 	if (courseExist > 0) { // error occurred
 		return courseExist;
 	}
+	sendPositiveInt(client_fd, SUCCESS);
 
 	// open course file
 	char courseFilePath[strlen(dir_path) + 10];
@@ -313,24 +314,16 @@ int HandleCommands(int client_fd, char *username) {
 		command = receivePositiveInt(client_fd);
 		switch (command) {
 			case LIST_OF_COURSES:
-				if ((result = listAllCourses(client_fd))) {
-					return result;
-				}
+				result = listAllCourses(client_fd);
 				break;
 			case ADD_COURSE:
-				if ((result = addCousre(client_fd))) {
-					return result;
-				}
+				result = addCousre(client_fd);
 				break;
 			case RATE_COURSE:
-				if ((result = rateCourse(client_fd, username))) {
-					return result;
-				}
+				result = rateCourse(client_fd, username);
 				break;
 			case GET_RATE:
-				if ((result = getRate(client_fd))) {
-					return result;
-				}
+				result = getRate(client_fd);
 				break;
 			case QUIT:
 				close(client_fd);
@@ -338,6 +331,16 @@ int HandleCommands(int client_fd, char *username) {
 				return SUCCESS;
 			default:
 				break;
+		}
+		if(result == IO_ERROR){
+			//can't open server files or memory allocation error
+			close(client_fd);
+			exit(1);
+		}
+		if(result == TCP_RECEIVE_ERROR || result == TCP_SEND_ERROR){
+			close(client_fd);
+			free(username);
+			return SUCCESS; //accept other connections
 		}
 	}
 
@@ -373,19 +376,8 @@ void StartListening() {
             return;
         }
 
-        char* username = NULL;
-        while (username == NULL) {
-        	username = GetAndValidateUsername(client_fd);
-        	if (username == NULL) {
-        		printf("ERROR: username or password are incorrect\n");
-        	}
-        }
-        
-        int result = HandleCommands(client_fd, username);
-        if (result) {
-        	close(client_fd);
-        	free(username);
-        }
+        char* username = GetAndValidateUsername(client_fd);
+        HandleCommands(client_fd, username);
     }
 
     close(socket_fd);
