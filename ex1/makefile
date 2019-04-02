@@ -2,11 +2,13 @@ CC = gcc
 CLIENT_OBJ = seker_client.o
 SERVER_OBJ = seker_server.o
 HELPERS_OBJ = seker_helpers.o
+OBJS = $(CLIENT_OBJ) $(SERVER_OBJ) $(HELPERS_OBJ)
 CLIENT_EXEC = seker_client
 SERVER_EXEC = seker_server
+EXEC = $(CLIENT_EXEC) $(SERVER_EXEC)
 COMP_FLAG = -Wall -g
 
-all: $(CLIENT_EXEC) $(SERVER_EXEC)
+all: $(EXEC)
 $(CLIENT_EXEC): $(CLIENT_OBJ) $(HELPERS_OBJ)
 	$(CC) $(CLIENT_OBJ) $(HELPERS_OBJ) -o $@
 $(SERVER_EXEC): $(SERVER_OBJ) $(HELPERS_OBJ)
