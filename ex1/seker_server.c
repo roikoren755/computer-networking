@@ -61,10 +61,10 @@ void InitServerFolder() {
 	// remove previous files if exist
 	char removeFiles[20 + strlen(dir_path)];
 	if (dir_path[0]=='/') { // absolute path
-		sprintf((char*)&removeFiles, "exec rm -r %s/*", dir_path);
+		sprintf((char*)&removeFiles, "exec rm -f %s/*.rating", dir_path);
 	}
 	else { // relative path
-		sprintf((char*)&removeFiles, "exec rm -r ./%s/*", dir_path);
+		sprintf((char*)&removeFiles, "exec rm -f ./%s/*.rating", dir_path);
 	}
 
 	system(removeFiles);
@@ -245,7 +245,7 @@ int rateCourse(int client_fd, char *username) {
 
 	char courseFilePath[strlen(dir_path) + 10];
 	memset(&courseFilePath, 0, sizeof(courseFilePath));
-	sprintf((char*) &courseFilePath, "%s/%d", dir_path, courseNum);
+	sprintf((char*) &courseFilePath, "%s/%d.rating", dir_path, courseNum);
 	FILE* courseFile = fopen(courseFilePath, "a+");
 	if (courseFile == NULL) {
 		printf("ERROR: can't open %s\n", courseFilePath);
@@ -294,7 +294,7 @@ int getRate(int client_fd) {
 	// open course file
 	char courseFilePath[strlen(dir_path) + 10];
 	memset(&courseFilePath, 0, sizeof(courseFilePath));
-	sprintf((char*) &courseFilePath, "%s/%d", dir_path, courseNum);
+	sprintf((char*) &courseFilePath, "%s/%d.rating", dir_path, courseNum);
 	FILE* courseFile = fopen((char*) &courseFilePath, "a+");
 	if (courseFile == NULL) {
 		printf("ERROR: can't open course %d file\n", courseNum);
