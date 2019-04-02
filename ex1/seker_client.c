@@ -397,6 +397,10 @@ int handleRateCourse() {
 
 	argument = strtok(NULL, DELIMITERS);
 	int grade = atoi(argument);
+	if (grade > 100) {
+		printf("Illegal command.\n");
+		return SUCCESS;
+	}
 	if (sendPositiveInt(socketFd, grade)) {
 		perror("Could not send rating value to server");
 		return TCP_SEND_ERROR;
@@ -458,7 +462,7 @@ int handleGetRate() {
  */
 int handleUserCommands() {
 	int quitEntered = 0;
-	int error;
+	int error = 0;
 	while (!quitEntered) {
 		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
 		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
@@ -466,27 +470,15 @@ int handleUserCommands() {
 		switch (command) {
 			case LIST_OF_COURSES:
 				error = handleListOfCourses();
-				if (error) {
-					return closeSocket(error);
-				}
 				break;
 			case ADD_COURSE:
 				error = handleAddCourse();
-				if (error) {
-					return closeSocket(error);
-				}
 				break;
 			case RATE_COURSE:
 				error = handleRateCourse();
-				if (error) {
-					return closeSocket(error);
-				}
 				break;
 			case GET_RATE:
 				error = handleGetRate();
-				if (error) {
-					return closeSocket(error);
-				}
 				break;
 			case QUIT:
 				sendPositiveInt(socketFd, QUIT);
@@ -495,6 +487,10 @@ int handleUserCommands() {
 			default:
 				printf("Illegal command.\n");
 				break;
+		}
+
+		if (error) {
+			return closeSocket(error);
 		}
 	}
 
