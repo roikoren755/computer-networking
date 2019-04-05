@@ -94,7 +94,7 @@ int getCommandInt(char* command) {
 		argument[strlen(argument) - 1] = '\0';
 	}
 	if (rest && rest[strlen(rest) - 1] == '\n') {
-			rest[strlen(rest) - 1] = '\0';
+		rest[strlen(rest) - 1] = '\0';
 	}
 
 
@@ -318,8 +318,7 @@ int handleListOfCourses() {
 
 		if (strcmp(receiveBuffer, END_OF_LIST)) {
 			printf("%s", receiveBuffer);
-		}
-		else {
+		} else {
 			break;
 		}
 	}
@@ -434,7 +433,7 @@ int handleGetRate() {
 		return TCP_SEND_ERROR;
 	}
 	int courseExist = receivePositiveInt(socketFd);
-	if(courseExist==ERROR){
+	if (courseExist == ERROR) {
 		printf("ERROR: course %d doesn't exist\n", atoi(courseNum));
 		return SUCCESS;
 	}
@@ -447,8 +446,7 @@ int handleGetRate() {
 
 		if (strcmp(receiveBuffer, END_OF_LIST)) {
 			printf("%s", receiveBuffer);
-		}
-		else {
+		} else {
 			break;
 		}
 	}
