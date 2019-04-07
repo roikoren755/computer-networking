@@ -92,7 +92,6 @@ void InitServerFolder() {
 	}
 
 	fclose(courselist);
-	free(course_list_path);
 }
 
 /***
@@ -399,6 +398,7 @@ int HandleCommands(int client_fd, char* username) {
 		if (result == IO_ERROR) {
 			//can't open server files or memory allocation error
 			close(client_fd);
+			free(course_list_path);
 			exit(1);
 		}
 		if (result == TCP_RECEIVE_ERROR || result == TCP_SEND_ERROR) {
@@ -465,5 +465,6 @@ int main(int argc, char *argv[]) {
 	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	StartListening();
+	free(course_list_path);
 	return 0;
 }
