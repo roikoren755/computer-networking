@@ -129,6 +129,8 @@ char* GetAndValidateUsername(int client_fd) {
 
 		// username or password don't match
 		sendPositiveInt(client_fd, ERROR);
+		memset(username, 0, MAXIMUM_USERNAME_LENGTH+1);
+		memset(&password, 0, MAXIMUM_USERNAME_LENGTH+1);
 	}
 }
 
