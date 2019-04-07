@@ -251,6 +251,12 @@ int initialHandshake() {
 		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
 		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
 		char* token = strtok(inputBuffer, " ");
+		if (strcmp(token, "User:")) {
+			printf("ERROR: malformed input\n");
+			response = ERROR;
+			continue;
+		}
+
 		token = strtok(NULL, " ");
 		if (!token) {
 			printf("ERROR: malformed input\n");
@@ -261,6 +267,12 @@ int initialHandshake() {
 		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
 		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
 		token = strtok(inputBuffer, " ");
+		if (strcmp(token, "Password:")) {
+			printf("ERROR: malformed input\n");
+			response = ERROR;
+			continue;
+		}
+
 		token = strtok(NULL, " ");
 		if (!token) {
 			printf("ERROR: malformed input\n");
@@ -291,7 +303,7 @@ int initialHandshake() {
 		if (response == ERROR) {
 			printf("Failed to login.\n");
 		}
-	} while (response != 0);
+	} while (response != SUCCESS);
 
 	printf("Hi %s, good to see you.\n", username);
 
