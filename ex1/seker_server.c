@@ -87,10 +87,12 @@ void InitServerFolder() {
 	FILE* courselist = fopen(course_list_path, "w+");
 	if (courselist == NULL) {
 		printf("ERROR: can't create file %s", course_list_path);
+		free(course_list_path);
 		return;
 	}
 
 	fclose(courselist);
+	free(course_list_path);
 }
 
 /***

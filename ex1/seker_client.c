@@ -35,6 +35,7 @@ char port[10] = {0};
 char inputBuffer[MAXIMUM_RATING_TEXT_LENGTH + 101] = {0};
 char receiveBuffer[MAXIMUM_RATING_TEXT_LENGTH + 101] = {0};
 int socketFd;
+struct addrinfo* adrrinfo_result;
 
 /***
  * Closes socketFd and returns exitCode
@@ -43,6 +44,7 @@ int socketFd;
  */
 int closeSocket(int exitCode) {
 	close(socketFd);
+	freeaddrinfo(adrrinfo_result);
 	return exitCode;
 }
 
@@ -205,25 +207,26 @@ int verifyArguments(int argc, char* argv[]) {
  * 		   SUCCESS otherwise
  */
 int findAndConnectToServer() {
-	struct addrinfo* result;
-	if (getaddrinfo(hostname, port, NULL, &result) < 0) {
+	if (getaddrinfo(hostname, port, NULL, &adrrinfo_result) < 0) {
 		perror("Could not resolve hostname '%s'!");
 		return HOSTNAME_RESOLUTION_ERROR;
 	}
 
-	if (result == NULL) {
+	if (adrrinfo_result == NULL) {
 		printf("No results found for hostname %s and port %s!\n", hostname, port);
 		return HOSTNAME_RESOLUTION_ERROR;
 	}
 
-	socketFd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	socketFd = socket(adrrinfo_result->ai_family, adrrinfo_result->ai_socktype, adrrinfo_result->ai_protocol);
 	if (socketFd < 0) {
 		perror("Could not open socket to server!");
+		freeaddrinfo(adrrinfo_result);
 		return SOCKET_OPENING_ERROR;
 	}
 
-	if (connect(socketFd, result->ai_addr, (socklen_t) result->ai_addrlen) < 0) {
+	if (connect(socketFd, adrrinfo_result->ai_addr, (socklen_t) adrrinfo_result->ai_addrlen) < 0) {
 		perror("Could not connect to server!");
+		freeaddrinfo(adrrinfo_result);
 		return closeSocket(SERVER_CONNECTING_ERROR);
 	}
 
