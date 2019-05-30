@@ -15,6 +15,7 @@
 #define add_course "add_course"
 #define rate_course "rate_course"
 #define get_rate "get_rate"
+#define broadcast "broadcast"
 #define quit "quit"
 #define DELIMITERS " \t"
 #define QUOTATION_MARK "\""
@@ -91,12 +92,17 @@ int getCommandInt(char* command) {
 	strncpy(buffer, command, MAXIMUM_RATING_TEXT_LENGTH + 100);
 
 	char* argument = strtok(buffer, DELIMITERS);
-	char* rest = strtok(NULL, DELIMITERS);
-	if (argument[strlen(argument) - 1] == '\n') {
-		argument[strlen(argument) - 1] = '\0';
-	}
-	if (rest && rest[strlen(rest) - 1] == '\n') {
-		rest[strlen(rest) - 1] = '\0';
+	char* rest;
+
+	if(strcmp(argument, broadcast)){ //if argument is not broadcast
+		rest = strtok(NULL, DELIMITERS);
+
+		if (argument[strlen(argument) - 1] == '\n') {
+			argument[strlen(argument) - 1] = '\0';
+		}
+		if (rest && rest[strlen(rest) - 1] == '\n') {
+			rest[strlen(rest) - 1] = '\0';
+		}
 	}
 
 
@@ -170,6 +176,13 @@ int getCommandInt(char* command) {
 		return QUIT;
 	}
 
+	if(!strcmp(argument, broadcast)){
+		rest = strtok(NULL, "\n");
+		if(validateInputIsInQuotes(rest)!=SUCCESS){
+			return PARSING_ERROR;
+		}
+		return BROADCAST;
+	}
 	return PARSING_ERROR;
 }
 
@@ -471,6 +484,28 @@ int handleGetRate() {
 }
 
 /***
+ * Handles "broadcast" input from user
+ * @return appropriate error code if an error occurs
+ * 		   SUCCESS otherwise
+ */
+int handleBroadcast() {
+	if (sendPositiveInt(socketFd, BROADCAST)) {
+		perror("Could not send requestId to server");
+		return TCP_SEND_ERROR;
+	}
+
+	char* argument = strtok(inputBuffer, DELIMITERS);
+	argument = strtok(NULL, QUOTATION_MARK);
+
+	if (sendString(socketFd, argument)) {
+		perror("Could not send broadcast message to server");
+		return TCP_SEND_ERROR;
+	}
+	return SUCCESS;
+}
+
+
+/***
  * Handles input from user in a loop, until he enters "quit"
  * @return appropriate error code if an error occurs
  * 		   SUCCESS otherwise
@@ -478,9 +513,27 @@ int handleGetRate() {
 int handleUserCommands() {
 	int quitEntered = 0;
 	int error = 0;
+	fd_set read_fds;
 	while (!quitEntered) {
 		memset(inputBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
+		FD_ZERO(&read_fds);
+		FD_SET(socketFd, &read_fds);
+		FD_SET(STDIN_FILENO, &read_fds);
+
+		select(socketFd+1, &read_fds, NULL, NULL, NULL);
+		if(FD_ISSET(socketFd, &read_fds)){
+			//a broadcast message from the server is available
+			receiveString(socketFd, receiveBuffer);
+			printf("%s\n", receiveBuffer);
+			memset(receiveBuffer, 0, MAXIMUM_RATING_TEXT_LENGTH + 100);
+		}
+		if(!FD_ISSET(STDIN_FILENO, &read_fds)){
+			//no input from user
+			continue;
+		}
+
 		fgets(inputBuffer, MAXIMUM_RATING_TEXT_LENGTH + 100, stdin);
+
 		int command = getCommandInt(inputBuffer);
 		switch (command) {
 			case LIST_OF_COURSES:
@@ -494,6 +547,9 @@ int handleUserCommands() {
 				break;
 			case GET_RATE:
 				error = handleGetRate();
+				break;
+			case BROADCAST:
+				error = handleBroadcast();
 				break;
 			case QUIT:
 				sendPositiveInt(socketFd, QUIT);

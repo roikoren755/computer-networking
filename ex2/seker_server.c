@@ -29,6 +29,8 @@ char *dir_path;
 char *course_list_path;
 int listen_port = DEFAULT_PORT;
 struct sockaddr_in server_addr;
+struct client_connection client_conn[MAXIMUM_NUMBER_OF_USERS]; //all clients fds and usernames
+
 
 /***
  * Reads from users_file, and stores all usernames and passwords in the Users array
@@ -70,9 +72,9 @@ void InitUsers(char* users_file) {
 /***
  * returns an array of client_connection, each element contains client fd and username
  */
-void InitClientConnection(struct client_connection *client_conn, int maxsize){
+void InitClientConnection(){
 	int i;
-	for(i=0; i<maxsize; i++){
+	for(i=0; i<MAXIMUM_NUMBER_OF_USERS; i++){
 		client_conn[i].fd=0;
 		client_conn[i].UserName = NULL;
 	}
@@ -221,6 +223,34 @@ int findCourseNum(int courseNum) {
 }
 
 /***
+ * Handles a broadcast request. Reads message from the client or sends a general 'A new course was added' message.
+ * @param sender_fd, sender_name - details of the user who initiated the broadcast
+ * @param read_socket - 0 if the message is 'A new course was added' or 1 in case we need to read the message from the sender_socket
+ */
+void Broadcast(int sender_fd, char *sender_name, int read_socket){
+	int msg_len = MAXIMUM_USERNAME_LENGTH + MAXIMUM_BROADCAST_LENGTH + 30;
+	char msg[msg_len];
+	memset(&msg, 0, msg_len);
+	char buffer[MAXIMUM_BROADCAST_LENGTH+10];
+	memset(&buffer, 0, MAXIMUM_BROADCAST_LENGTH+10);
+
+	if(!read_socket)
+		sprintf((char*)msg, "A new course was just added!");
+	else{
+		//read message from the client
+		receiveString(sender_fd, (char*)&buffer);
+		sprintf((char*)msg, "%s sent a new message: %s", sender_name, buffer);
+	}
+
+	int i;
+	for(i=0; i<MAXIMUM_NUMBER_OF_USERS; i++){
+		if(client_conn[i].fd>0 && client_conn[i].fd!= sender_fd && client_conn[i].UserName != NULL){
+			sendString(client_conn[i].fd, msg);
+		}
+	}
+}
+
+/***
  * Handles list_of_courses request from the client, by sending the content of the courselist file
  * @param client_fd - socket connected to the client
  * @return IO_ERROR if the courselist file could not be opened
@@ -274,7 +304,7 @@ int addCourse(int client_fd) {
 
 	fprintf(courseList, "%d:\t%s\n", courseNum, buffer);
 	fclose(courseList);
-
+	Broadcast(client_fd, NULL, 0); //broadcast: A new course was just added!
 	return SUCCESS;
 }
 
@@ -408,6 +438,9 @@ int HandleCommands(int client_fd, char* username) {
 		case GET_RATE:
 			result = getRate(client_fd);
 			break;
+		case BROADCAST:
+			Broadcast(client_fd, username, 1);
+			break;
 		case QUIT:
 			close(client_fd);
 			free(username);
@@ -454,14 +487,15 @@ void StartListening() {
 	struct sockaddr_in client_addr;
 	socklen_t client_addrsize = sizeof(client_addr);
 
-	struct client_connection client_conn[MAXIMUM_NUMBER_OF_USERS]; //all clients fds and usernames
-	InitClientConnection(&client_conn, MAXIMUM_NUMBER_OF_USERS);
+	InitClientConnection(MAXIMUM_NUMBER_OF_USERS);
 	int connected_clients = 0;
 	fd_set read_fds;
+	fd_set write_fds;
 	int max_fd, i;
 
 	while (1) {
 		FD_ZERO(&read_fds); //remove all fds from set
+		FD_ZERO(&write_fds); //remove all fds from set
 		FD_SET(socket_fd, &read_fds); //add the listening socket
 		max_fd = socket_fd;
 
@@ -470,12 +504,13 @@ void StartListening() {
 
 			if(client_conn[i].fd>0) //connected client
 				FD_SET(client_conn[i].fd, &read_fds); //add to set
+				FD_SET(client_conn[i].fd, &write_fds); //add to set
 			if(client_conn[i].fd>max_fd)
 				max_fd = client_conn[i].fd;
 		}
 
 		//wait for any connected client activity
-		if(select(max_fd+1, &read_fds, NULL, NULL, NULL)<0){
+		if(select(max_fd+1, &read_fds, &write_fds, NULL, NULL)<0){
 			printf("ERROR: select() error\n");
 			return;
 		}
@@ -506,7 +541,7 @@ void StartListening() {
 
 		//read message from every client in read_fds
 		for(i=0; i<MAXIMUM_NUMBER_OF_USERS; i++){
-			if(FD_ISSET(client_conn[i].fd, &read_fds)){
+			if(FD_ISSET(client_conn[i].fd, &read_fds) && FD_ISSET(client_conn[i].fd, &write_fds)){
 				printf("client_fd %d is read-ready\n", client_conn[i].fd);
 				if(client_conn[i].UserName==NULL){
 					printf("  client_fd %d is authenticating\n", client_conn[i].fd);
