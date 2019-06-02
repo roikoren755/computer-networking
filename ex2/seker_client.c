@@ -302,7 +302,7 @@ int initialHandshake() {
 		removeTrailingChar(password);
 
 
-		response = sendPositiveInt(socketFd, 0); //send "I'm ready to login int" for select()
+		response = sendPositiveInt(socketFd, SUCCESS); //send "I'm ready to login int" for select()
 		if (response != SUCCESS) {
 			printf("ERROR: Could not initialize handshake!");
 			return HANDSHAKE_ERROR;

@@ -244,7 +244,7 @@ void Broadcast(int sender_fd, char *sender_name, int read_socket){
 
 	int i;
 	for(i=0; i<MAXIMUM_NUMBER_OF_USERS; i++){
-		if(client_conn[i].fd>0 && client_conn[i].fd!= sender_fd && client_conn[i].UserName != NULL){
+		if(client_conn[i].fd>0 && client_conn[i].fd != sender_fd && client_conn[i].UserName != NULL){
 			sendString(client_conn[i].fd, msg);
 		}
 	}
